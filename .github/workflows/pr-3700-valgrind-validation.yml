@@ -1,0 +1,24 @@
+name: PR 3700 Valgrind timeout validation
+on:
+  push:
+    branches:
+      - staging/pr-3700-reviewer-validation
+  workflow_dispatch:
+jobs:
+  fork-valgrind:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build and Valgrind dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang valgrind
+      - name: Configure
+        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+      - name: Build crypto_test
+        run: cmake --build build --target crypto_test -j 4
+      - name: Normal regression
+        run: build/crypto/crypto_test --gtest_filter=ForkDetect.SimultaneousFirstReadAfterFork
+      - name: Valgrind regression
+        run: valgrind --tool=memcheck --error-exitcode=99 build/crypto/crypto_test --gtest_filter=ForkDetect.SimultaneousFirstReadAfterFork
