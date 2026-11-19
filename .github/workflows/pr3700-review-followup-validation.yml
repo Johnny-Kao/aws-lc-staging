@@ -1,0 +1,79 @@
+name: PR3700 Review Follow-up Validation
+
+on:
+  push:
+    branches:
+      - staging/pr3700-review-followup-20261120
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86-64 C11 atomics
+            runner: ubuntu-24.04
+            disable_c11_atomics: false
+            valgrind: true
+          - name: Linux x86-64 fallback
+            runner: ubuntu-24.04
+            disable_c11_atomics: true
+            valgrind: false
+          - name: Linux ARM64 C11 atomics
+            runner: ubuntu-24.04-arm
+            disable_c11_atomics: false
+            valgrind: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang valgrind
+      - name: Configure
+        env:
+          DISABLE_C11_ATOMICS: ${{ matrix.disable_c11_atomics }}
+        run: |
+          if [ "$DISABLE_C11_ATOMICS" = "true" ]; then
+            cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DCMAKE_C_FLAGS=-D__STDC_NO_ATOMICS__
+          else
+            cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+          fi
+      - name: Build crypto_test
+        run: cmake --build build --target crypto_test -j 4
+      - name: Fork-generation regression
+        run: build/crypto/crypto_test --gtest_filter='ForkDetect.*'
+      - name: Valgrind regression
+        if: ${{ matrix.valgrind }}
+        run: valgrind --tool=memcheck --error-exitcode=99 build/crypto/crypto_test --gtest_filter='ForkDetect.SimultaneousFirstReadAfterFork'
+
+  freebsd:
+    name: FreeBSD 14.2 fallback build and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: cpa.sh {0}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start FreeBSD VM
+        uses: cross-platform-actions/action@v1.6.0
+        with:
+          operating_system: freebsd
+          architecture: x86-64
+          version: "14.2"
+          shell: bash
+          memory: 12G
+          cpu_count: 3
+      - name: Install dependencies
+        run: sudo pkg install -y cmake ninja
+      - name: Configure and build crypto_test
+        run: |
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+          cmake --build build --target crypto_test -j 3
+      - name: Run crypto_test
+        run: build/crypto/crypto_test
