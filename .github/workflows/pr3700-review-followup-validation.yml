@@ -70,7 +70,7 @@ jobs:
           memory: 12G
           cpu_count: 3
       - name: Install dependencies
-        run: sudo pkg install -y cmake ninja go gmake
+        run: sudo pkg install -y cmake ninja go gmake perl5
       - name: Configure and build crypto_test
         run: |
           cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
